@@ -2,31 +2,23 @@
 package regression
 
 import (
-	"github.com/gaillard/go-queue/queue"
 	"math"
 )
 
 //Regression represents a queue of past points. Use New() to initialize.
 type Regression struct {
 	xSum, ySum, xxSum, xySum, yySum, xDelta            float64
-	points                                             *queue.Queue
 	lastSlopeCalc, lastInterceptCalc, lastStdErrorCalc float64
+	N                                                  int
 
 	//here so multiple calcs calls per add calls wont hurt performance
 	lastCalcFresh bool
-
-	//here for performance to avoid point.Back() calls
-	lastX float64
-}
-
-type point struct {
-	x, y, xx, xy, yy float64
 }
 
 //New returns a Regression that keeps points back as far as xDelta from the last
 //added point.
-func New(xDelta float64) *Regression {
-	return &Regression{xDelta: xDelta, points: queue.New(), lastX: math.Inf(-1)}
+func New() Regression {
+	return Regression{}
 }
 
 //Calculate returns the slope, intercept and standard error of a best fit line to the added
@@ -36,7 +28,7 @@ func (r *Regression) Calculate() (slope, intercept float64) {
 	return
 }
 
-//Calculate returns the slope, intercept and standard error of a best fit line to the added
+//CalculateWithStdError returns the slope, intercept and standard error of a best fit line to the added
 //points. Returns a cached value if called between adds.
 func (r *Regression) CalculateWithStdError() (slope, intercept, stdError float64) {
 	if r.lastCalcFresh {
@@ -46,7 +38,7 @@ func (r *Regression) CalculateWithStdError() (slope, intercept, stdError float64
 		return
 	}
 
-	n := float64(r.points.Len())
+	n := float64(r.N)
 
 	//linear regression formula:
 	//slope is (n*SUM(x*y) - SUM(x)*SUM(y)) / (n*SUM(x*x) - (SUM(x))^2)
@@ -75,38 +67,10 @@ func (r *Regression) CalculateWithStdError() (slope, intercept, stdError float64
 //Add adds the new x and y as a point into the queue. Panics if given an x value less than the last.
 func (r *Regression) Add(x, y float64) {
 	r.lastCalcFresh = false
-
-	if x < r.lastX {
-		panic("adding with x less than the last add is not allowed")
-	}
-	r.lastX = x
-
-	//storing pointers instead of values only for performance
-	newPoint := &point{x, y, x * x, x * y, y * y}
-	r.points.PushBack(newPoint)
-	r.xSum += newPoint.x
-	r.ySum += newPoint.y
-	r.xxSum += newPoint.xx
-	r.xySum += newPoint.xy
-	r.yySum += newPoint.yy
-
-	//here to only calc once for performance
-	oldestXAllowed := r.lastX - r.xDelta
-
-	for {
-		point := r.points.Front().(*point)
-		//no need to check for nil since we just did a .PushBack()
-
-		if point.x >= oldestXAllowed {
-			break
-		}
-
-		r.xSum -= point.x
-		r.ySum -= point.y
-		r.xxSum -= point.xx
-		r.xySum -= point.xy
-		r.yySum -= point.yy
-
-		r.points.PopFront()
-	}
+	r.N++
+	r.xSum += x
+	r.ySum += y
+	r.xxSum += x * x
+	r.xySum += x * y
+	r.yySum += y * y
 }
